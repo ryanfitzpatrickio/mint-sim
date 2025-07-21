@@ -662,6 +662,7 @@
             <button class="debug-button" onclick="testSimulationLogicSeparation()">Test Sim Logic</button>
             <button class="debug-button" onclick="testPeopleRendering()">Test People Render</button>
             <button class="debug-button" onclick="forcePeopleRendering()">Force People Render</button>
+            <button class="debug-button" onclick="testPersonHighlight()">Test Person Highlight</button>
         </div>
     </div>
 
@@ -2713,6 +2714,40 @@
             });
             
             window.peopleDebug('=== End Force People Rendering ===');
+        };
+        
+        // Test person highlight circle
+        window.testPersonHighlight = function() {
+            window.eventBus.log('=== Test Person Highlight ===');
+            
+            if (!personManager || !houseRenderer) {
+                window.eventBus.log('ERROR: PersonManager or HouseRenderer not available');
+                return;
+            }
+            
+            const people = personManager.getPeople();
+            if (people.length === 0) {
+                window.eventBus.log('ERROR: No people available to test');
+                return;
+            }
+            
+            const firstPerson = people[0];
+            window.eventBus.log(`Testing highlight for person: ${firstPerson.id}`);
+            
+            // Test setting selected person
+            houseRenderer.setSelectedPerson(firstPerson.id);
+            
+            // Check if highlight circle was created
+            window.eventBus.log(`Highlight circle exists: ${houseRenderer.personHighlightCircle ? 'YES' : 'NO'}`);
+            window.eventBus.log(`Selected person ID: ${houseRenderer.selectedPersonId}`);
+            
+            if (houseRenderer.personHighlightCircle) {
+                window.eventBus.log(`Highlight circle position: (${houseRenderer.personHighlightCircle.position.x.toFixed(2)}, ${houseRenderer.personHighlightCircle.position.z.toFixed(2)})`);
+                window.eventBus.log(`Highlight circle visible: ${houseRenderer.personHighlightCircle.visible}`);
+                window.eventBus.log(`Highlight circle material opacity: ${houseRenderer.personHighlightCircle.material.opacity}`);
+            }
+            
+            window.eventBus.log('=== End Test Person Highlight ===');
         };
     </script>
 </body>
