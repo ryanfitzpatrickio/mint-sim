@@ -788,13 +788,16 @@
                 
                 // Initialize renderer
                 houseRenderer = new HouseRenderer(scene);
-                
+
                 // Make renderer available globally for Person animation registration
                 window.houseRenderer = houseRenderer;
-                
+
                 // Set camera reference and config for culling
                 houseRenderer.setCamera(camera);
                 houseRenderer.setConfig(this.config);
+
+                // Load person models before any rendering occurs
+                await houseRenderer.loadPersonModels();
                 
                 // Initialize enhanced person manager
                 window.peopleDebug('Creating EnhancedPersonManager...');
