@@ -1,0 +1,2716 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Deterministic Sims Clone - Grid Based</title>
+    
+    <!-- Custom Recast.js - TEMPORARILY DISABLED due to worker errors -->
+    <!-- <script src="lib/recast-custom.js"></script> -->
+    <script>
+        // This will be logged through the event bus once it's initialized
+        window.addEventListener('load', () => {
+            if (window.eventBus) {
+                window.eventBus.log('WARN', 'Recast.js temporarily disabled - using grid-based navigation only');
+            }
+        });
+    </script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Courier New', monospace;
+            background-color: #1a1a1a;
+            color: #00ff00;
+            overflow: hidden;
+        }
+
+        #toolbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            min-height: 60px;
+            background: rgba(0, 0, 0, 0.9);
+            border-bottom: 2px solid #00ff00;
+            z-index: 1000;
+            display: none;
+            flex-wrap: wrap;
+            align-items: center;
+            padding: 10px 15px;
+            gap: 15px;
+        }
+
+        #toolbarToggle {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: #00ff00;
+            color: black;
+            border: 2px solid #00aa00;
+            border-radius: 5px;
+            padding: 8px 12px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            z-index: 1001;
+            transition: all 0.2s ease;
+        }
+
+        #toolbarToggle:hover {
+            background: #00aa00;
+            border-color: #00ff00;
+        }
+
+        .toolbar-section {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 0 10px;
+            border-right: 1px solid #00aa00;
+            height: 40px;
+            flex-shrink: 0;
+        }
+
+        .toolbar-section:last-child {
+            border-right: none;
+        }
+
+        /* Responsive adjustments for smaller screens */
+        @media (max-width: 1200px) {
+            #toolbar {
+                gap: 10px;
+                padding: 8px 10px;
+            }
+            
+            .toolbar-section {
+                gap: 10px;
+                padding: 0 8px;
+            }
+            
+            .info-line {
+                font-size: 11px;
+                gap: 6px;
+            }
+            
+            .value {
+                min-width: 35px;
+            }
+        }
+
+        @media (max-width: 800px) {
+            #toolbar {
+                gap: 8px;
+                padding: 6px 8px;
+            }
+            
+            .toolbar-section {
+                gap: 8px;
+                padding: 0 6px;
+                height: 35px;
+            }
+            
+            .info-line {
+                font-size: 10px;
+                gap: 4px;
+            }
+            
+            .value {
+                min-width: 30px;
+            }
+            
+            .debug-button {
+                padding: 6px 12px;
+                font-size: 11px;
+            }
+        }
+
+        .info-line {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
+        .label {
+            color: #00aa00;
+            font-weight: bold;
+        }
+
+        .value {
+            color: #00ff00;
+            font-weight: bold;
+            min-width: 40px;
+            text-align: right;
+        }
+
+        .tick-value {
+            color: #ffff00;
+        }
+
+        .seed-value {
+            color: #ff8800;
+        }
+
+        .debug-button {
+            background: #ff4400;
+            color: white;
+            border: 2px solid #ff6600;
+            border-radius: 5px;
+            padding: 8px 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .debug-button:hover {
+            background: #ff6600;
+            border-color: #ff8800;
+            transform: translateY(-1px);
+        }
+
+        .debug-button:active {
+            transform: translateY(0);
+        }
+
+        #simulationStatus {
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px;
+            border: 2px solid #00ff00;
+            border-radius: 5px;
+            font-size: 11px;
+            font-family: 'Courier New', monospace;
+            color: #00aa00;
+        }
+
+        /* People Management UI - Sims 2000s Style */
+        #peopleToolbar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 90px;
+            background: linear-gradient(180deg, #4a6b8a 0%, #2c4a6b 50%, #1a2f4a 100%);
+            border-top: 3px solid #7ba4c7;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            gap: 15px;
+            overflow-x: auto;
+            box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .person-avatar {
+            width: 60px;
+            height: 60px;
+            border: 3px solid #7ba4c7;
+            border-radius: 10px;
+            background: linear-gradient(145deg, #5a7b9a 0%, #3a5b7a 100%);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .person-avatar:hover {
+            border-color: #9bc4e7;
+            transform: translateY(-4px);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4);
+        }
+
+        .person-avatar.selected {
+            border-color: #ffd700;
+            box-shadow: 0 0 15px rgba(255, 215, 0, 0.6);
+            background: linear-gradient(145deg, #6a8baa 0%, #4a6b8a 100%);
+        }
+
+        .person-avatar canvas {
+            width: 100%;
+            height: 100%;
+            border-radius: 9px;
+        }
+
+        .person-avatar .need-indicator {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            border: 2px solid #2c4a6b;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .need-indicator.critical {
+            background: linear-gradient(145deg, #ff4444, #cc0000);
+            animation: pulse 1.5s infinite;
+        }
+
+        .need-indicator.low {
+            background: linear-gradient(145deg, #ff8844, #cc6600);
+        }
+
+        .need-indicator.medium {
+            background: linear-gradient(145deg, #ffcc44, #ccaa00);
+        }
+
+        .need-indicator.good {
+            background: linear-gradient(145deg, #44cc44, #00aa00);
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(1.1); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+
+        .person-avatar .person-name {
+            position: absolute;
+            bottom: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 10px;
+            color: #ffffff;
+            white-space: nowrap;
+            text-align: center;
+            width: 100%;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+        }
+
+        /* Person Details Popup - Sims 2000s Style */
+        #personDetailsPopup {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 450px;
+            max-height: 85vh;
+            background: linear-gradient(145deg, #4a6b8a 0%, #2c4a6b 50%, #1a2f4a 100%);
+            border: 3px solid #7ba4c7;
+            border-radius: 12px;
+            z-index: 2000;
+            display: none;
+            font-family: 'Arial', sans-serif;
+            color: #ffffff;
+            overflow: hidden;
+            font-size: 12px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        }
+
+        .popup-header {
+            background: linear-gradient(180deg, #5a7b9a 0%, #3a5b7a 100%);
+            padding: 15px;
+            border-bottom: 2px solid #7ba4c7;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-radius: 9px 9px 0 0;
+        }
+
+        .popup-avatar {
+            width: 50px;
+            height: 50px;
+            border: 2px solid #7ba4c7;
+            border-radius: 8px;
+            background: linear-gradient(145deg, #6a8baa 0%, #4a6b8a 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #ffffff;
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        .popup-avatar canvas {
+            width: 100%;
+            height: 100%;
+            border-radius: 6px;
+        }
+
+        .popup-info {
+            flex: 1;
+        }
+
+        .popup-name {
+            font-size: 16px;
+            font-weight: bold;
+            color: #ffffff;
+            margin-bottom: 4px;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+        }
+
+        .popup-traits {
+            font-size: 11px;
+            color: #ffd700;
+            margin-bottom: 4px;
+            font-style: italic;
+        }
+
+        .popup-location {
+            font-size: 11px;
+            color: #9bc4e7;
+            font-weight: bold;
+        }
+
+        .popup-close {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: linear-gradient(145deg, #ff6666, #cc4444);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            transition: all 0.2s ease;
+        }
+
+        .popup-close:hover {
+            background: linear-gradient(145deg, #ff8888, #ff6666);
+            transform: scale(1.1);
+        }
+
+        .popup-content {
+            padding: 15px;
+            max-height: 65vh;
+            overflow-y: auto;
+        }
+
+        .needs-section, .tasks-section {
+            margin-bottom: 25px;
+        }
+
+        .section-title {
+            font-size: 14px;
+            font-weight: bold;
+            color: #ffffff;
+            margin-bottom: 12px;
+            border-bottom: 2px solid #7ba4c7;
+            padding-bottom: 6px;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+        }
+
+        .needs-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .need-item {
+            background: linear-gradient(145deg, #3a5b7a 0%, #2a4b6a 100%);
+            border: 2px solid #5a7b9a;
+            border-radius: 8px;
+            padding: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .need-label {
+            font-size: 11px;
+            color: #9bc4e7;
+            margin-bottom: 6px;
+            font-weight: bold;
+            text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.8);
+        }
+
+        .need-bar {
+            width: 100%;
+            height: 16px;
+            background: linear-gradient(180deg, #1a2f4a 0%, #2a3f5a 100%);
+            border: 2px solid #5a7b9a;
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .need-fill {
+            height: 100%;
+            transition: width 0.4s ease;
+            position: relative;
+            border-radius: 6px;
+        }
+
+        .need-fill.critical { background: linear-gradient(90deg, #ff4444, #cc0000); }
+        .need-fill.low { background: linear-gradient(90deg, #ff8844, #cc6600); }
+        .need-fill.medium { background: linear-gradient(90deg, #ffcc44, #ccaa00); }
+        .need-fill.good { background: linear-gradient(90deg, #44cc44, #00aa00); }
+
+        .need-value {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 10px;
+            color: white;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+        }
+
+        .task-queue {
+            max-height: 150px;
+            overflow-y: auto;
+            border: 2px solid #5a7b9a;
+            border-radius: 8px;
+            background: linear-gradient(145deg, #3a5b7a 0%, #2a4b6a 100%);
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .task-item {
+            padding: 8px 12px;
+            border-bottom: 1px solid #4a6b8a;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: background 0.2s ease;
+        }
+
+        .task-item:last-child {
+            border-bottom: none;
+        }
+
+        .task-item.current {
+            background: linear-gradient(145deg, #4a6b8a 0%, #3a5b7a 100%);
+            border-left: 4px solid #ffd700;
+        }
+
+        .task-item:hover {
+            background: linear-gradient(145deg, #5a7b9a 0%, #4a6b8a 100%);
+        }
+
+        .task-icon {
+            width: 20px;
+            height: 20px;
+            background: linear-gradient(145deg, #7ba4c7, #5a7b9a);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            color: white;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .task-info {
+            flex: 1;
+        }
+
+        .task-name {
+            font-size: 11px;
+            color: #ffffff;
+            margin-bottom: 2px;
+            font-weight: bold;
+        }
+
+        .task-details {
+            font-size: 9px;
+            color: #9bc4e7;
+            font-style: italic;
+        }
+
+        .task-progress {
+            width: 50px;
+            height: 8px;
+            background: linear-gradient(180deg, #1a2f4a 0%, #2a3f5a 100%);
+            border: 1px solid #5a7b9a;
+            border-radius: 4px;
+            overflow: hidden;
+            box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
+        }
+
+        .task-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #44cc44, #00aa00);
+            transition: width 0.3s ease;
+            border-radius: 3px;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 800px) {
+            #peopleToolbar {
+                height: 70px;
+                padding: 8px;
+                gap: 10px;
+            }
+
+            .person-avatar {
+                width: 50px;
+                height: 50px;
+            }
+
+            #personDetailsPopup {
+                width: 90vw;
+                max-width: 500px;
+            }
+
+            .needs-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="toolbar">
+        <div class="toolbar-section">
+            <div class="info-line">
+                <span class="label">TICK:</span>
+                <span class="value tick-value" id="tickCounter">0</span>
+            </div>
+            <div class="info-line">
+                <span class="label">TIME:</span>
+                <span class="value" id="gameTime">00:00:00</span>
+            </div>
+        </div>
+        
+        <div class="toolbar-section">
+            <div class="info-line">
+                <span class="label">SEED:</span>
+                <span class="value seed-value" id="seedDisplay">12345</span>
+            </div>
+            <div class="info-line">
+                <span class="label">RNG:</span>
+                <span class="value" id="rngState">000000</span>
+            </div>
+        </div>
+        
+        <div class="toolbar-section">
+            <div class="info-line">
+                <span class="label">GRID:</span>
+                <span class="value" id="gridSize">32x32</span>
+            </div>
+            <div class="info-line">
+                <span class="label">HOUSE:</span>
+                <span class="value" id="houseSize">0x0</span>
+            </div>
+        </div>
+        
+        <div class="toolbar-section">
+            <div class="info-line">
+                <span class="label">ROOMS:</span>
+                <span class="value" id="roomCount">0</span>
+            </div>
+            <div class="info-line">
+                <span class="label">WALLS:</span>
+                <span class="value" id="wallCount">0</span>
+            </div>
+        </div>
+        
+        <div class="toolbar-section">
+            <div class="info-line">
+                <span class="label">FURNITURE:</span>
+                <span class="value" id="furnitureCount">0</span>
+            </div>
+            <div class="info-line">
+                <span class="label">FLOORS:</span>
+                <span class="value" id="floorCount">0</span>
+            </div>
+        </div>
+        
+        <div class="toolbar-section">
+            <div class="info-line">
+                <span class="label">PEOPLE:</span>
+                <span class="value" id="peopleCount">0</span>
+            </div>
+            <div class="info-line">
+                <span class="label">ACTIVE:</span>
+                <span class="value" id="activePeople">0</span>
+            </div>
+        </div>
+        
+        <div class="toolbar-section">
+            <div class="info-line">
+                <span class="label">VISIBLE:</span>
+                <span class="value" id="visibleWalls">0</span>
+            </div>
+            <div class="info-line">
+                <span class="label">HIDDEN:</span>
+                <span class="value" id="hiddenWalls">0</span>
+            </div>
+        </div>
+        
+        <div class="toolbar-section">
+            <button class="debug-button" onclick="regenerateSeed()">Regenerate Seed</button>
+        </div>
+        
+        <div class="toolbar-section">
+            <button class="debug-button" onclick="toggleNavMeshDebug()">Toggle NavMesh</button>
+            <button class="debug-button" onclick="testNavMeshPathfinding()">Test Pathfinding</button>
+            <button class="debug-button" onclick="testRoomPathfinding()">Test Room Paths</button>
+            <button class="debug-button" onclick="testDoorMap()">Test Door Map</button>
+            <button class="debug-button" onclick="inspectHouseData()">Inspect House</button>
+            <button class="debug-button" onclick="testEnhancedPeople()">Test People UI</button>
+            <button class="debug-button" onclick="testPopupDirectly()">Test Popup Direct</button>
+            <button class="debug-button" onclick="testPersonDetailsPopup()">Test Person Details</button>
+            <button class="debug-button" onclick="testPeopleToolbar()">Test People Toolbar</button>
+            <button class="debug-button" onclick="testMovementSystem()">Test Movement</button>
+            <button class="debug-button" onclick="testSimulationLogicSeparation()">Test Sim Logic</button>
+            <button class="debug-button" onclick="testPeopleRendering()">Test People Render</button>
+            <button class="debug-button" onclick="forcePeopleRendering()">Force People Render</button>
+        </div>
+    </div>
+
+    <button id="toolbarToggle" onclick="toggleToolbar()">SHOW</button>
+
+    <div id="simulationStatus">
+        GRID-BASED DETERMINISTIC SIMULATION WITH SIMS-STYLE CULLING...
+    </div>
+
+    <!-- People Management Toolbar -->
+    <div id="peopleToolbar">
+        <!-- Person avatars will be dynamically added here -->
+    </div>
+
+    <!-- Person Details Popup - REMOVED STATIC HTML, WILL BE CREATED DYNAMICALLY -->
+
+    <!-- Load our modular components first (these use global variables) -->
+    <script src="lib/js/eventBus.js"></script>
+    <script src="lib/js/utils.js"></script>
+    <script src="lib/js/grid.js"></script>
+    <script src="lib/js/room.js"></script>
+    <script src="lib/js/wall.js"></script>
+    <script src="lib/js/house.js"></script>
+    <script src="lib/js/person.js"></script>
+    <script src="lib/js/personManager.js"></script>
+    <script src="lib/js/enhancedPerson.js"></script>
+    <script src="lib/js/enhancedPersonManager.js"></script>
+    <script src="lib/js/collisionAvoidance.js"></script>
+    <script src="lib/js/furnitureInteraction.js"></script>
+    <script src="lib/js/renderer.js"></script>
+    <script src="lib/js/roof.js"></script>
+
+    <!-- Main application using ES6 modules -->
+    <script type="module">
+        import * as THREE from './lib/three/three.module.js';
+        import { OrbitControls } from './lib/three/addons/controls/OrbitControls.js';
+        import { GLTFLoader } from './lib/three/addons/loaders/GLTFLoader.js';
+        import { clone, retarget, retargetClip } from './lib/three/addons/utils/SkeletonUtils.js';
+        
+        // Verify GLTFLoader is available
+        window.eventBus.log('GLTFLoader available:', GLTFLoader);
+        window.eventBus.log('THREE available:', THREE);
+
+        // Make THREE available globally for the component scripts
+        window.THREE = THREE;
+        window.OrbitControls = OrbitControls;
+        window.GLTFLoader = GLTFLoader;
+        window.SkeletonUtils = { clone, retarget, retargetClip };
+
+        // Load NavMeshPlanner after THREE is available
+        const navMeshScript = document.createElement('script');
+        navMeshScript.src = 'lib/js/NavMeshPlanner.js';
+        document.head.appendChild(navMeshScript);
+
+        // Deterministic simulation state
+        let simulationState = {
+            tick: 0,
+            deploymentTime: null,
+            tickInterval: 1000,
+            seed: 12345,
+            house: null,
+            lastTickTime: 0,
+            rngState: 12345
+        };
+
+        // Three.js components
+        let scene, camera, renderer, controls;
+        let grid, house, houseRenderer;
+        let personManager;
+        let rng;
+
+        // Load configuration from config.json
+        async function loadConfig() {
+            try {
+                const response = await fetch('./config.json');
+                const config = await response.json();
+                
+                simulationState.deploymentTime = new Date(config.deploymentTime);
+                simulationState.tickInterval = config.tickInterval;
+                simulationState.seed = config.randomSeed;
+                simulationState.rngState = config.randomSeed;
+                
+                return config;
+            } catch (error) {
+                window.eventBus.log('Using default config, could not load config.json:', error);
+                simulationState.deploymentTime = new Date("2024-12-23T00:00:00.000Z");
+                return {
+                    deploymentTime: "2024-12-23T00:00:00.000Z",
+                    tickInterval: 1000,
+                    randomSeed: 12345,
+                    gameSettings: {
+                        gridSize: 32,
+                        cellSize: 1.0,
+                        minRoomSize: 3,
+                        maxRoomSize: 8,
+                        maxRooms: 6,
+                        wallHeight: 3.0,
+                        wallThickness: 0.1,
+                        foregroundWallHeight: 1.5,
+                        foregroundDirection: "south",
+                        showGrid: false,
+                        maxPeople: 4,
+                        personSpawnInterval: 1000
+                    }
+                };
+            }
+        }
+
+        // Deterministic simulation engine
+        class DeterministicSimulation {
+            constructor(config) {
+                this.config = config;
+                this.houseData = null;
+            }
+
+            async init() {
+                rng = new DeterministicRNG(simulationState.seed);
+                
+                // Initialize grid system
+                grid = new Grid(this.config, rng);
+                
+                // Initialize house
+                house = new House(this.config, grid, rng);
+                
+                // Initialize renderer
+                houseRenderer = new HouseRenderer(scene);
+                
+                // Make renderer available globally for Person animation registration
+                window.houseRenderer = houseRenderer;
+                
+                // Set camera reference and config for culling
+                houseRenderer.setCamera(camera);
+                houseRenderer.setConfig(this.config);
+                
+                // Initialize enhanced person manager
+                window.peopleDebug('Creating EnhancedPersonManager...');
+                personManager = new EnhancedPersonManager(this.config, rng);
+                window.peopleDebug('EnhancedPersonManager created:', personManager);
+                
+                // Generate initial house (async - loads GLB models)
+                window.peopleDebug('Starting house generation...');
+                await this.generateHouse();
+                window.peopleDebug('House generation completed');
+                
+                // Add some initial people
+                window.peopleDebug('Starting to add initial people...');
+                this.addInitialPeople();
+                window.peopleDebug('Initial people addition completed');
+                
+                this.updateDisplay();
+            }
+
+            async generateHouse() {
+                // Generate a complete planned house with all essential rooms
+                const success = house.generatePlannedHouse();
+                
+                if (success) {
+                    // Get house data
+                    this.houseData = house.getHouseData();
+                    window.peopleDebug('House data generated successfully');
+                    
+                    // Build navigation mesh for pathfinding (async)
+                    try {
+                        const navMeshSuccess = await house.buildNavigationMesh();
+                        if (navMeshSuccess) {
+                            window.eventBus.log('Grid-based navigation mesh built successfully for house');
+                        } else {
+                            window.eventBus.log('Failed to build navigation mesh');
+                        }
+                    } catch (error) {
+                        window.eventBus.log('Error building navigation mesh:', error);
+                    }
+                    
+                    // Set current house data for roof rendering
+                    houseRenderer.setCurrentHouseData(this.houseData);
+                    window.peopleDebug('House data set in renderer');
+                    
+                    // Render the house (async - loads GLB models)
+                    window.peopleDebug('Starting house rendering...');
+                    await houseRenderer.renderHouse(this.houseData, this.config.gameSettings.showGrid);
+                    window.peopleDebug('House rendering completed');
+                    window.peopleDebug('houseGroup available:', !!houseRenderer.houseGroup);
+                    
+                    // Update camera to focus on the house
+                    this.focusCameraOnHouse(this.houseData);
+                    
+                    this.updateHouseDisplay();
+                    this.updateRenderStats();
+                } else {
+                    window.eventBus.log('Failed to generate planned house');
+                }
+            }
+
+            focusCameraOnHouse(houseData) {
+                const center = houseData.center;
+                const dimensions = houseData.dimensions;
+                
+                // Calculate appropriate camera distance
+                const maxDimension = Math.max(dimensions.width, dimensions.height) * grid.cellSize;
+                const distance = maxDimension * 2;
+                
+                // Position camera
+                camera.position.set(
+                    center.worldX + distance * 0.7,
+                    distance * 0.8,
+                    center.worldZ + distance * 0.7
+                );
+                
+                // Update controls target
+                controls.target.set(center.worldX, 0, center.worldZ);
+                controls.update();
+            }
+
+            tick() {
+                simulationState.tick++;
+                simulationState.rngState = rng.getState();
+                
+                // Update people simulation logic only (needs, tasks, decisions) - NOT movement
+                if (personManager && house && this.houseData && this.houseData.rooms) {
+                    // Only update simulation logic, not movement or rendering
+                    personManager.updateSimulationLogic(simulationState.tick, house, this.houseData.rooms, simulationState.tick);
+                    
+                    // Debug: Log simulation tick occasionally
+                    if (simulationState.tick % 50 === 0) {
+                        window.eventBus.log('DEBUG', `Simulation tick ${simulationState.tick}: Updated simulation logic only (no movement)`);
+                    }
+                    
+                    // REMOVED: Movement and rendering updates that were causing jumping
+                    // personManager.update(simulationState.tick, house, this.houseData.rooms, simulationState.tick);
+                    // const peopleData = personManager.getEnhancedPeopleData ? personManager.getEnhancedPeopleData() : personManager.getPeopleData();
+                    // const peopleObjects = personManager.getPeople();
+                    // houseRenderer.updatePeople(peopleData, peopleObjects);
+                }
+                
+                // House is static - no updates needed
+                // house.update(simulationState.tick); // Removed to prevent furniture movement
+                
+                // Re-render if house changed
+                // if (simulationState.tick % 50 === 0) {
+                //     this.houseData = house.getHouseData();
+                //     houseRenderer.setCurrentHouseData(this.houseData);
+                //     houseRenderer.updateFurniture(this.houseData.rooms);
+                //     this.updateRenderStats();
+                // }
+                
+                // Disabled: Re-generate house periodically for demonstration
+                // if (simulationState.tick % 200 === 0) {
+                //     this.generateHouse();
+                // }
+                
+                this.updateDisplay();
+            }
+            
+            // Add initial people to the simulation
+            addInitialPeople() {
+                window.peopleDebug('Adding initial people...');
+                window.peopleDebug('PersonManager type:', personManager ? personManager.constructor.name : 'null');
+                window.peopleDebug('House data available:', !!this.houseData);
+                window.peopleDebug('HouseRenderer available:', !!houseRenderer);
+                
+                if (!personManager || !this.houseData) return;
+                
+                const rooms = this.houseData.rooms;
+                if (rooms.length === 0) return;
+                
+                window.peopleDebug(`Found ${rooms.length} rooms for people spawning`);
+                
+                // Add multiple people to test the UI
+                const livingRoom = rooms.find(room => room.type === 'living_room');
+                const bedroom = rooms.find(room => room.type === 'bedroom');
+                const kitchen = rooms.find(room => room.type === 'kitchen');
+                const bathroom = rooms.find(room => room.type === 'bathroom');
+                
+                window.peopleDebug('Room availability:', {
+                    livingRoom: !!livingRoom,
+                    bedroom: !!bedroom,
+                    kitchen: !!kitchen,
+                    bathroom: !!bathroom
+                });
+                
+                if (livingRoom) {
+                    const person = personManager.addPerson('male', livingRoom, house);
+                    window.peopleDebug(`Added person to living room:`, person ? person.id : 'failed');
+                }
+                
+                if (bedroom) {
+                    const person = personManager.addPerson('female', bedroom, house);
+                    window.peopleDebug(`Added person to bedroom:`, person ? person.id : 'failed');
+                }
+                
+                if (kitchen) {
+                    const person = personManager.addPerson('male', kitchen, house);
+                    window.peopleDebug(`Added person to kitchen:`, person ? person.id : 'failed');
+                }
+                
+                if (bathroom) {
+                    const person = personManager.addPerson('female', bathroom, house);
+                    window.peopleDebug(`Added person to bathroom:`, person ? person.id : 'failed');
+                }
+                
+                const totalPeople = personManager.getPeople().length;
+                window.peopleDebug(`Added initial people. Total people: ${totalPeople}`);
+                
+                // Test UI elements
+                const peopleToolbar = document.getElementById('peopleToolbar');
+                const personDetailsPopup = document.getElementById('personDetailsPopup');
+                window.peopleDebug('UI Elements check:');
+                window.peopleDebug('  - peopleToolbar exists:', !!peopleToolbar);
+                window.peopleDebug('  - personDetailsPopup exists:', !!personDetailsPopup);
+                if (peopleToolbar) {
+                    window.peopleDebug('  - peopleToolbar children:', peopleToolbar.children.length);
+                }
+                
+                // Render the initial people with their Person objects
+                if (houseRenderer && totalPeople > 0) {
+                    window.peopleDebug('Rendering people...');
+                    const peopleData = personManager.getEnhancedPeopleData ? personManager.getEnhancedPeopleData() : personManager.getPeopleData();
+                    const peopleObjects = personManager.getPeople();
+                    window.peopleDebug(`People data: ${peopleData.length} entries`);
+                    window.peopleDebug(`People objects: ${peopleObjects.length} entries`);
+                    
+                    houseRenderer.renderPeople(peopleData, peopleObjects);
+                    window.peopleDebug('People rendering completed');
+                } else {
+                    window.peopleDebug('WARN: Cannot render people: houseRenderer not available or no people');
+                }
+            }
+
+            updateDisplay() {
+                // Safely update DOM elements with null checks
+                const tickCounterEl = document.getElementById('tickCounter');
+                const seedDisplayEl = document.getElementById('seedDisplay');
+                const rngStateEl = document.getElementById('rngState');
+                const gridSizeEl = document.getElementById('gridSize');
+                const gameTimeEl = document.getElementById('gameTime');
+                
+                if (tickCounterEl) tickCounterEl.textContent = simulationState.tick;
+                if (seedDisplayEl) seedDisplayEl.textContent = simulationState.seed;
+                if (rngStateEl) rngStateEl.textContent = simulationState.rngState.toString(16).slice(-6).toUpperCase();
+                
+                // Update grid info
+                if (grid && gridSizeEl) {
+                    const gridDimensions = grid.getDimensions();
+                    if (gridDimensions) {
+                        gridSizeEl.textContent = `${gridDimensions.size}x${gridDimensions.size}`;
+                    }
+                }
+                
+                // Calculate game time from deployment
+                if (gameTimeEl && simulationState.deploymentTime) {
+                    const currentTime = new Date();
+                    const elapsedMs = currentTime - simulationState.deploymentTime;
+                    const hours = Math.floor(elapsedMs / (1000 * 60 * 60));
+                    const minutes = Math.floor((elapsedMs % (1000 * 60 * 60)) / (1000 * 60));
+                    const seconds = Math.floor((elapsedMs % (1000 * 60)) / 1000);
+                    
+                    gameTimeEl.textContent = 
+                        `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                }
+            }
+
+            updateHouseDisplay() {
+                if (!house || !house.rooms || house.rooms.length === 0) {
+                    return;
+                }
+                
+                const dimensions = house.getDimensions();
+                if (!dimensions) {
+                    return;
+                }
+                
+                // Safely update DOM elements with null checks
+                const roomCountEl = document.getElementById('roomCount');
+                const houseSizeEl = document.getElementById('houseSize');
+                
+                if (roomCountEl) roomCountEl.textContent = house.rooms.length;
+                if (houseSizeEl) houseSizeEl.textContent = `${dimensions.width}x${dimensions.height}`;
+            }
+
+            updateRenderStats() {
+                if (!houseRenderer) {
+                    window.eventBus.log('HouseRenderer not available for stats update');
+                    return;
+                }
+                
+                const stats = houseRenderer.getStats();
+                if (!stats) {
+                    window.eventBus.log('No stats available from HouseRenderer');
+                    return;
+                }
+                
+                // Safely update DOM elements with null checks
+                const wallCountEl = document.getElementById('wallCount');
+                const furnitureCountEl = document.getElementById('furnitureCount');
+                const floorCountEl = document.getElementById('floorCount');
+                const totalObjectsEl = document.getElementById('totalObjects');
+                const peopleCountEl = document.getElementById('peopleCount');
+                const activePeopleEl = document.getElementById('activePeople');
+                
+                if (wallCountEl) wallCountEl.textContent = stats.walls || 0;
+                if (furnitureCountEl) furnitureCountEl.textContent = stats.furniture || 0;
+                if (floorCountEl) floorCountEl.textContent = stats.floors || 0;
+                if (totalObjectsEl) totalObjectsEl.textContent = stats.total || 0;
+                if (peopleCountEl) peopleCountEl.textContent = stats.people || 0;
+                
+                // Update person statistics
+                if (personManager) {
+                    const personStats = personManager.getStats();
+                    if (activePeopleEl) activePeopleEl.textContent = personStats.activePeople || 0;
+                }
+            }
+
+            updateCullStats() {
+                // Update culling statistics
+                if (!houseRenderer || !houseRenderer.wallMeshes) {
+                    return;
+                }
+                
+                let visibleWalls = 0;
+                let hiddenWalls = 0;
+                
+                houseRenderer.wallMeshes.forEach((wallData, mesh) => {
+                    if (mesh.visible) {
+                        visibleWalls++;
+                    } else {
+                        hiddenWalls++;
+                    }
+                });
+                
+                // Safely update DOM elements with null checks
+                const visibleWallsEl = document.getElementById('visibleWalls');
+                const hiddenWallsEl = document.getElementById('hiddenWalls');
+                
+                if (visibleWallsEl) visibleWallsEl.textContent = visibleWalls;
+                if (hiddenWallsEl) hiddenWallsEl.textContent = hiddenWalls;
+            }
+        }
+
+        let simulation;
+
+        // Debug grid state
+        let debugGridVisible = false;
+        let debugGridGroup = null;
+        let debugTextGroup = null;
+        
+        // Debug NavMesh state
+        let debugNavMeshVisible = false;
+        let debugNavMeshGroup = null;
+
+        // Initialize Three.js
+        function initThreeJS() {
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87CEEB); // Sky blue
+
+            // Camera - positioned for isometric-like view
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(20, 15, 20);
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.body.appendChild(renderer.domElement);
+
+            // Controls - NO auto rotation as requested
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.target.set(0, 0, 0);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.autoRotate = false; // Disabled as requested
+            controls.maxPolarAngle = Math.PI * 0.45; // Limit vertical rotation
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(30, 30, 20);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
+            scene.add(directionalLight);
+
+            // Ground plane
+            const groundGeometry = new THREE.PlaneGeometry(100, 100);
+            const groundMaterial = new THREE.MeshLambertMaterial({ color: 0x228B22 });
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = -Math.PI / 2;
+            ground.position.y = -0.2;
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            // Initialize debug grid groups
+            debugGridGroup = new THREE.Group();
+            debugTextGroup = new THREE.Group();
+            scene.add(debugGridGroup);
+            scene.add(debugTextGroup);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // Handle keyboard events
+        function handleKeyDown(event) {
+            if (event.key.toLowerCase() === 'z') {
+                toggleNavMeshDebug();
+            }
+        }
+        
+        // Handle clicks outside popup to close it
+        function handleClickOutside(event) {
+            const popup = document.getElementById('personDetailsPopup');
+            if (popup && (popup.style.display === 'block' || window.getComputedStyle(popup).display === 'block')) {
+                if (!popup.contains(event.target)) {
+                    closePersonDetails();
+                }
+            }
+        }
+
+        // Toggle toolbar visibility
+        window.toggleToolbar = function() {
+            const toolbar = document.getElementById('toolbar');
+            const toggleButton = document.getElementById('toolbarToggle');
+            
+            if (toolbar.style.display === 'flex' || window.getComputedStyle(toolbar).display === 'flex') {
+                toolbar.style.display = 'none';
+                toggleButton.textContent = 'SHOW';
+            } else {
+                toolbar.style.display = 'flex';
+                toggleButton.textContent = 'HIDE';
+            }
+        };
+
+        // Toggle debug grid visibility
+        function toggleDebugGrid() {
+            debugGridVisible = !debugGridVisible;
+            
+            if (debugGridVisible) {
+                createDebugGrid();
+                window.eventBus.log('Debug grid enabled - press Z again to disable');
+            } else {
+                clearDebugGrid();
+                window.eventBus.log('Debug grid disabled');
+            }
+        }
+
+        // Toggle NavMesh debug visualization
+        function toggleNavMeshDebug() {
+            debugNavMeshVisible = !debugNavMeshVisible;
+            
+            if (debugNavMeshVisible) {
+                createNavMeshDebug();
+                window.eventBus.log('NavMesh debug enabled');
+            } else {
+                clearNavMeshDebug();
+                window.eventBus.log('NavMesh debug disabled');
+            }
+        }
+
+        // Create NavMesh debug visualization
+        function createNavMeshDebug() {
+            clearNavMeshDebug();
+            
+            if (!simulation || !simulation.houseData || !house) {
+                window.eventBus.log('No house or NavMesh available for debug visualization');
+                return;
+            }
+
+            const navMesh = house.getNavMeshPlanner();
+            if (!navMesh) {
+                window.eventBus.log('No NavMesh available for debug visualization');
+                return;
+            }
+
+            // Check for grid-based navigation system
+            if (!navMesh.walkableNodes || navMesh.walkableNodes.length === 0) {
+                window.eventBus.log('No walkable nodes available in NavMesh');
+                return;
+            }
+
+            window.eventBus.log('Creating NavMesh debug visualization...');
+            
+            // Create debug visualization group
+            debugNavMeshGroup = new THREE.Group();
+            
+            // 1. Visualize NavMesh regions (walkable areas)
+            visualizeNavMeshRegions(navMesh);
+            
+            // 2. Visualize person targets and paths
+            visualizePersonTargetsAndPaths();
+            
+            scene.add(debugNavMeshGroup);
+            window.eventBus.log('NavMesh debug visualization created');
+        }
+        
+        // Helper function to calculate total path distance
+        function calculatePathDistance(pathPoints) {
+            let totalDistance = 0;
+            for (let i = 1; i < pathPoints.length; i++) {
+                const prev = pathPoints[i - 1];
+                const curr = pathPoints[i];
+                const dx = curr.x - prev.x;
+                const dz = curr.z - prev.z;
+                totalDistance += Math.sqrt(dx * dx + dz * dz);
+            }
+            return totalDistance;
+        }
+        
+        // Visualize NavMesh regions (grid-based)
+        function visualizeNavMeshRegions(navMesh) {
+            if (!navMesh.walkableNodes) {
+                window.eventBus.log('No walkable nodes available in NavMesh');
+                return;
+            }
+            
+            //window.eventBus.log(`Visualizing ${navMesh.walkableNodes.length} walkable nodes`);
+            
+            // Calculate statistics
+            let roomCenterCount = 0;
+            let doorNodeCount = 0;
+            let regularNodeCount = 0;
+            let totalConnections = 0;
+            
+            navMesh.walkableNodes.forEach(node => {
+                if (node.isRoomCenter) roomCenterCount++;
+                else if (node.isDoorNode) doorNodeCount++;
+                else regularNodeCount++;
+                totalConnections += node.connections.length;
+            });
+            
+            window.eventBus.log(`NavMesh Statistics: ${roomCenterCount} room centers, ${doorNodeCount} door nodes, ${regularNodeCount} regular nodes, ${totalConnections} total connections`);
+            
+            navMesh.walkableNodes.forEach((node, index) => {
+                // Determine node type and appearance
+                let nodeSize, nodeColor, nodeHeight;
+                
+                if (node.isRoomCenter) {
+                    // Room center nodes - larger and blue
+                    nodeSize = 0.6;
+                    nodeColor = 0x0066ff;
+                    nodeHeight = 0.15;
+                } else if (node.isDoorNode) {
+                    // Door nodes - medium size and red
+                    nodeSize = 0.5;
+                    nodeColor = 0xff6600;
+                    nodeHeight = 0.12;
+                } else {
+                    // Regular nodes - smaller and green
+                    nodeSize = 0.3;
+                    nodeColor = 0x00ff00;
+                    nodeHeight = 0.08;
+                }
+                
+                // Create a diamond-shaped geometry for each walkable node
+                const geometry = new THREE.BufferGeometry();
+                const vertices = new Float32Array([
+                    // Diamond shape: top, right, bottom, left points
+                    node.worldX + nodeSize/2, nodeHeight, node.worldZ,                    // top
+                    node.worldX + nodeSize, nodeHeight, node.worldZ + nodeSize/2,        // right
+                    node.worldX + nodeSize/2, nodeHeight, node.worldZ + nodeSize,        // bottom
+                    node.worldX, nodeHeight, node.worldZ + nodeSize/2,                   // left
+                ]);
+                const indices = new Uint16Array([
+                    0, 1, 2,  // First triangle
+                    0, 2, 3   // Second triangle
+                ]);
+                
+                geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+                geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+                geometry.computeVertexNormals();
+                
+                // Create material based on node type
+                const material = new THREE.MeshBasicMaterial({ 
+                    color: nodeColor, 
+                    opacity: 0.9, 
+                    transparent: true,
+                    side: THREE.DoubleSide
+                });
+                
+                const mesh = new THREE.Mesh(geometry, material);
+                mesh.userData.type = 'walkable_node';
+                mesh.userData.nodeIndex = index;
+                mesh.userData.nodeType = node.isRoomCenter ? 'room_center' : node.isDoorNode ? 'door_node' : 'regular_node';
+                debugNavMeshGroup.add(mesh);
+                
+                // Add node connections (lines between connected nodes)
+                node.connections.forEach(connection => {
+                    const lineGeometry = new THREE.BufferGeometry();
+                    const lineVertices = new Float32Array([
+                        node.worldX + nodeSize/2, nodeHeight * 0.5, node.worldZ + nodeSize/2,
+                        connection.worldX + nodeSize/2, nodeHeight * 0.5, connection.worldZ + nodeSize/2
+                    ]);
+                    lineGeometry.setAttribute('position', new THREE.BufferAttribute(lineVertices, 3));
+                    
+                    // Different line colors for different connection types
+                    let lineColor = 0x888888; // Default gray
+                    if (node.isDoorNode && connection.isDoorNode) {
+                        lineColor = 0xff0000; // Red for door-to-door connections
+                    } else if (node.isRoomCenter || connection.isRoomCenter) {
+                        lineColor = 0x0066ff; // Blue for room center connections
+                    }
+                    
+                    const lineMaterial = new THREE.LineBasicMaterial({ 
+                        color: lineColor, 
+                        opacity: 0.6,
+                        transparent: true
+                    });
+                    
+                    const line = new THREE.Line(lineGeometry, lineMaterial);
+                    line.userData.type = 'node_connection';
+                    debugNavMeshGroup.add(line);
+                });
+            });
+            
+            // Add legend
+            addNavMeshLegend();
+            
+            // Add some example pathfinding tests
+            addPathfindingTests(navMesh);
+            
+            // Add door map visualization
+            addDoorMapVisualization(navMesh);
+        }
+        
+        // Add example pathfinding tests to demonstrate the system
+        function addPathfindingTests(navMesh) {
+            if (!navMesh.walkableNodes || navMesh.walkableNodes.length === 0) {
+                return;
+            }
+            
+            window.eventBus.log('Adding pathfinding test examples...');
+            
+            // Find some room centers and door nodes for testing
+            const roomCenters = navMesh.walkableNodes.filter(node => node.isRoomCenter);
+            const doorNodes = navMesh.walkableNodes.filter(node => node.isDoorNode);
+            
+            if (roomCenters.length >= 2) {
+                // Test path between two room centers
+                const start = roomCenters[0];
+                const end = roomCenters[1];
+                
+                const THREE = window.THREE;
+                const startVec = new THREE.Vector3(start.worldX, 0, start.worldZ);
+                const endVec = new THREE.Vector3(end.worldX, 0, end.worldZ);
+                
+                const testPath = navMesh.findPath(startVec, endVec);
+                
+                if (testPath && testPath.length > 0) {
+                    window.eventBus.log(`Test path from ${start.room} to ${end.room}: ${testPath.length} waypoints`);
+                    
+                    // Visualize test path
+                    const pathGeometry = new THREE.BufferGeometry().setFromPoints(testPath);
+                    const pathMaterial = new THREE.LineBasicMaterial({ 
+                        color: 0x00ffff, 
+                        linewidth: 4,
+                        opacity: 0.9,
+                        transparent: true
+                    });
+                    const pathLine = new THREE.Line(pathGeometry, pathMaterial);
+                    pathLine.userData.type = 'test_path';
+                    debugNavMeshGroup.add(pathLine);
+                    
+                    // Add test path label
+                    const canvas = document.createElement('canvas');
+                    const context = canvas.getContext('2d');
+                    canvas.width = 300;
+                    canvas.height = 64;
+                    
+                    context.fillStyle = 'rgba(0, 255, 255, 0.9)';
+                    context.fillRect(0, 0, canvas.width, canvas.height);
+                    
+                    context.fillStyle = 'black';
+                    context.font = '12px Arial';
+                    context.textAlign = 'center';
+                    context.fillText(`Test Path: ${start.room} → ${end.room}`, canvas.width / 2, 30);
+                    context.fillText(`${testPath.length} waypoints, ${calculatePathDistance(testPath).toFixed(1)}m`, canvas.width / 2, 45);
+                    
+                    const texture = new THREE.CanvasTexture(canvas);
+                    const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+                    const sprite = new THREE.Sprite(spriteMaterial);
+                    
+                    const midPoint = testPath[Math.floor(testPath.length / 2)];
+                    sprite.position.set(midPoint.x, 1.5, midPoint.z);
+                    sprite.scale.set(3, 1, 1);
+                    sprite.userData.type = 'test_path_label';
+                    debugNavMeshGroup.add(sprite);
+                }
+            }
+        }
+        
+        // Add door map visualization
+        function addDoorMapVisualization(navMesh) {
+            const doorMap = navMesh.getDoorMap();
+            const roomConnections = navMesh.getRoomConnections();
+            
+            if (!doorMap || doorMap.size === 0) {
+                window.eventBus.log('No door map available for visualization');
+                return;
+            }
+            
+            window.eventBus.log('Adding door map visualization...');
+            
+            // Visualize each door connection
+            doorMap.forEach((doorData, doorKey) => {
+                const { sourceRoom, destRoom, doorInfo } = doorData;
+                
+                // Create a line connecting the room centers to show the door connection
+                const sourceCenterX = sourceRoom.worldX + sourceRoom.worldWidth / 2;
+                const sourceCenterZ = sourceRoom.worldZ + sourceRoom.worldHeight / 2;
+                const destCenterX = destRoom.worldX + destRoom.worldWidth / 2;
+                const destCenterZ = destRoom.worldZ + destRoom.worldHeight / 2;
+                
+                const lineGeometry = new THREE.BufferGeometry();
+                const lineVertices = new Float32Array([
+                    sourceCenterX, 0.8, sourceCenterZ,
+                    destCenterX, 0.8, destCenterZ
+                ]);
+                lineGeometry.setAttribute('position', new THREE.BufferAttribute(lineVertices, 3));
+                
+                const lineMaterial = new THREE.LineBasicMaterial({ 
+                    color: 0xff00ff, 
+                    linewidth: 2,
+                    opacity: 0.7,
+                    transparent: true
+                });
+                
+                const line = new THREE.Line(lineGeometry, lineMaterial);
+                line.userData.type = 'door_connection';
+                line.userData.doorKey = doorKey;
+                debugNavMeshGroup.add(line);
+                
+                // Add door label
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                canvas.width = 200;
+                canvas.height = 40;
+                
+                context.fillStyle = 'rgba(255, 0, 255, 0.8)';
+                context.fillRect(0, 0, canvas.width, canvas.height);
+                
+                context.fillStyle = 'white';
+                context.font = '10px Arial';
+                context.textAlign = 'center';
+                context.fillText(`${sourceRoom.type} ↔ ${destRoom.type}`, canvas.width / 2, 25);
+                
+                const texture = new THREE.CanvasTexture(canvas);
+                const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+                const sprite = new THREE.Sprite(spriteMaterial);
+                
+                // Position label at the middle of the connection
+                const midX = (sourceCenterX + destCenterX) / 2;
+                const midZ = (sourceCenterZ + destCenterZ) / 2;
+                sprite.position.set(midX, 1.0, midZ);
+                sprite.scale.set(2, 0.8, 1);
+                sprite.userData.type = 'door_label';
+                sprite.userData.doorKey = doorKey;
+                debugNavMeshGroup.add(sprite);
+            });
+            
+            // Add door map statistics
+            const doorStats = navMesh.getDoorMapStatistics();
+            window.eventBus.log('Door Map Statistics:', doorStats);
+            
+            // Create statistics label
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = 300;
+            canvas.height = 120;
+            
+            context.fillStyle = 'rgba(255, 0, 255, 0.9)';
+            context.fillRect(0, 0, canvas.width, canvas.height);
+            
+            context.fillStyle = 'white';
+            context.font = '12px Arial';
+            context.textAlign = 'left';
+            context.fillText('Door Map Statistics:', 10, 20);
+            context.fillText(`Total Doors: ${doorStats.totalDoors}`, 10, 35);
+            context.fillText(`Total Rooms: ${doorStats.totalRooms}`, 10, 50);
+            context.fillText(`Avg Connections: ${doorStats.averageConnectionsPerRoom}`, 10, 65);
+            context.fillText(`Max Connections: ${doorStats.maxConnectionsPerRoom}`, 10, 80);
+            context.fillText(`Isolated Rooms: ${doorStats.isolatedRooms}`, 10, 95);
+            context.fillText(`Fully Connected: ${doorStats.fullyConnectedRooms}`, 10, 110);
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+            const sprite = new THREE.Sprite(spriteMaterial);
+            
+            sprite.position.set(-15, 2, -8);
+            sprite.scale.set(3, 1.2, 1);
+            sprite.userData.type = 'door_stats_label';
+            debugNavMeshGroup.add(sprite);
+        }
+        
+        // Add legend for NavMesh visualization
+        function addNavMeshLegend() {
+            const legendItems = [
+                { color: 0x0066ff, label: 'Room Centers', size: 0.6 },
+                { color: 0xff6600, label: 'Door Nodes', size: 0.5 },
+                { color: 0x00ff00, label: 'Walkable Nodes', size: 0.3 },
+                { color: 0xff0000, label: 'Door Connections', size: 0.3 },
+                { color: 0x0066ff, label: 'Room Center Connections', size: 0.3 },
+                { color: 0x888888, label: 'Regular Connections', size: 0.3 }
+            ];
+            
+            legendItems.forEach((item, index) => {
+                // Create legend item geometry
+                const geometry = new THREE.PlaneGeometry(item.size, item.size);
+                geometry.rotateX(-Math.PI/2);
+                geometry.translate(-15 + (index % 3) * 5, 0.01, -10 + Math.floor(index / 3) * 2);
+                
+                const material = new THREE.MeshBasicMaterial({ 
+                    color: item.color, 
+                    opacity: 0.9, 
+                    transparent: true,
+                    side: THREE.DoubleSide
+                });
+                
+                const mesh = new THREE.Mesh(geometry, material);
+                mesh.userData.type = 'legend_item';
+                debugNavMeshGroup.add(mesh);
+                
+                // Add text label
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                canvas.width = 256;
+                canvas.height = 64;
+                
+                context.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                context.fillRect(0, 0, canvas.width, canvas.height);
+                
+                context.fillStyle = 'white';
+                context.font = '14px Arial';
+                context.textAlign = 'left';
+                context.fillText(item.label, 10, 35);
+                
+                const texture = new THREE.CanvasTexture(canvas);
+                const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+                const sprite = new THREE.Sprite(spriteMaterial);
+                
+                sprite.position.set(-15 + (index % 3) * 5 + 1, 0.5, -10 + Math.floor(index / 3) * 2);
+                sprite.scale.set(3, 1.5, 1);
+                sprite.userData.type = 'legend_label';
+                debugNavMeshGroup.add(sprite);
+            });
+        }
+        
+        // Visualize person targets and paths
+        function visualizePersonTargetsAndPaths() {
+            if (!personManager) {
+                window.eventBus.log('No person manager available for path visualization');
+                return;
+            }
+            
+            const people = personManager.getPeople();
+            const peopleData = personManager.getPeopleData();
+            
+            //window.eventBus.log(`Visualizing paths for ${people.length} people`);
+            
+            people.forEach((person, index) => {
+                const personData = peopleData[index];
+                if (!personData) return;
+                
+                // 1. Show current position
+                const currentPos = { x: person.worldX, z: person.worldZ };
+                const currentGeometry = new THREE.SphereGeometry(0.2, 8, 8);
+                const currentMaterial = new THREE.MeshBasicMaterial({ color: 0x0000ff });
+                const currentMesh = new THREE.Mesh(currentGeometry, currentMaterial);
+                currentMesh.position.set(currentPos.x, 0.5, currentPos.z);
+                currentMesh.userData.type = 'person';
+                currentMesh.userData.personIndex = index;
+                debugNavMeshGroup.add(currentMesh);
+                
+                // 2. Show target position
+                if (personData.targetPosition) {
+                    const targetGeometry = new THREE.SphereGeometry(0.3, 8, 8);
+                    const targetMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+                    const targetMesh = new THREE.Mesh(targetGeometry, targetMaterial);
+                    targetMesh.position.set(personData.targetPosition.x, 0.6, personData.targetPosition.z);
+                    targetMesh.userData.type = 'target';
+                    targetMesh.userData.personIndex = index;
+                    debugNavMeshGroup.add(targetMesh);
+                    
+                    // Add target label
+                    const canvas = document.createElement('canvas');
+                    const context = canvas.getContext('2d');
+                    canvas.width = 128;
+                    canvas.height = 64;
+                    
+                    context.fillStyle = 'rgba(255, 0, 0, 0.8)';
+                    context.fillRect(0, 0, canvas.width, canvas.height);
+                    
+                    context.fillStyle = 'white';
+                    context.font = '12px Arial';
+                    context.textAlign = 'center';
+                    context.fillText(`Target ${index + 1}`, canvas.width / 2, 30);
+                    context.fillText(`${personData.targetPosition.x.toFixed(1)}, ${personData.targetPosition.z.toFixed(1)}`, canvas.width / 2, 45);
+                    
+                    const texture = new THREE.CanvasTexture(canvas);
+                    const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+                    const sprite = new THREE.Sprite(spriteMaterial);
+                    
+                    sprite.position.set(personData.targetPosition.x, 1.5, personData.targetPosition.z);
+                    sprite.scale.set(2, 1, 1);
+                    sprite.userData.type = 'label';
+                    sprite.userData.personIndex = index;
+                    sprite.userData.labelType = 'target';
+                    debugNavMeshGroup.add(sprite);
+                }
+                
+                // 3. Show path to target
+                if (personData.path && personData.path.length > 0) {
+                    const pathPoints = [];
+                    
+                    // Start from current position
+                    pathPoints.push(new THREE.Vector3(currentPos.x, 0.3, currentPos.z));
+                    
+                    // Add path waypoints
+                    personData.path.forEach(waypoint => {
+                        pathPoints.push(new THREE.Vector3(waypoint.x, 0.3, waypoint.z));
+                    });
+                    
+                    // Add target position
+                    if (personData.targetPosition) {
+                        pathPoints.push(new THREE.Vector3(personData.targetPosition.x, 0.3, personData.targetPosition.z));
+                    }
+                    
+                    // Create path line
+                    if (pathPoints.length > 1) {
+                        const pathGeometry = new THREE.BufferGeometry().setFromPoints(pathPoints);
+                        const pathMaterial = new THREE.LineBasicMaterial({ 
+                            color: 0xffff00, 
+                            linewidth: 3,
+                            opacity: 0.8,
+                            transparent: true
+                        });
+                        const pathLine = new THREE.Line(pathGeometry, pathMaterial);
+                        pathLine.userData.type = 'path';
+                        pathLine.userData.personIndex = index;
+                        debugNavMeshGroup.add(pathLine);
+                        
+                        // Add waypoint markers
+                        pathPoints.forEach((point, pointIndex) => {
+                            if (pointIndex > 0 && pointIndex < pathPoints.length - 1) { // Skip start and end
+                                const waypointGeometry = new THREE.SphereGeometry(0.1, 4, 4);
+                                const waypointMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+                                const waypointMesh = new THREE.Mesh(waypointGeometry, waypointMaterial);
+                                waypointMesh.position.copy(point);
+                                waypointMesh.userData.type = 'waypoint';
+                                waypointMesh.userData.personIndex = index;
+                                debugNavMeshGroup.add(waypointMesh);
+                            }
+                        });
+                        
+                        // Add path info label
+                        const canvas = document.createElement('canvas');
+                        const context = canvas.getContext('2d');
+                        canvas.width = 256;
+                        canvas.height = 64;
+                        
+                        context.fillStyle = 'rgba(255, 255, 0, 0.8)';
+                        context.fillRect(0, 0, canvas.width, canvas.height);
+                        
+                        context.fillStyle = 'black';
+                        context.font = '12px Arial';
+                        context.textAlign = 'center';
+                        context.fillText(`Path ${index + 1}: ${pathPoints.length} waypoints`, canvas.width / 2, 30);
+                        context.fillText(`Distance: ${calculatePathDistance(pathPoints).toFixed(1)}m`, canvas.width / 2, 45);
+                        
+                        const texture = new THREE.CanvasTexture(canvas);
+                        const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+                        const sprite = new THREE.Sprite(spriteMaterial);
+                        
+                        // Position label near the middle of the path
+                        const midPoint = pathPoints[Math.floor(pathPoints.length / 2)];
+                        sprite.position.set(midPoint.x, 1.0, midPoint.z);
+                        sprite.scale.set(2, 1, 1);
+                        sprite.userData.type = 'path_label';
+                        sprite.userData.personIndex = index;
+                        debugNavMeshGroup.add(sprite);
+                    }
+                } else {
+                    // Show "No Path" indicator
+                    const canvas = document.createElement('canvas');
+                    const context = canvas.getContext('2d');
+                    canvas.width = 128;
+                    canvas.height = 32;
+                    
+                    context.fillStyle = 'rgba(255, 0, 0, 0.8)';
+                    context.fillRect(0, 0, canvas.width, canvas.height);
+                    
+                    context.fillStyle = 'white';
+                    context.font = '10px Arial';
+                    context.textAlign = 'center';
+                    context.fillText('No Path', canvas.width / 2, 20);
+                    
+                    const texture = new THREE.CanvasTexture(canvas);
+                    const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+                    const sprite = new THREE.Sprite(spriteMaterial);
+                    
+                    sprite.position.set(currentPos.x, 0.8, currentPos.z);
+                    sprite.scale.set(1, 0.5, 1);
+                    sprite.userData.type = 'no_path_label';
+                    sprite.userData.personIndex = index;
+                    debugNavMeshGroup.add(sprite);
+                }
+                
+                // 4. Add person label
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                canvas.width = 128;
+                canvas.height = 64;
+                
+                context.fillStyle = 'rgba(0, 0, 255, 0.8)';
+                context.fillRect(0, 0, canvas.width, canvas.height);
+                
+                context.fillStyle = 'white';
+                context.font = '12px Arial';
+                context.textAlign = 'center';
+                context.fillText(`Person ${index + 1}`, canvas.width / 2, 30);
+                context.fillText(`${personData.currentRoom || 'outside'}`, canvas.width / 2, 45);
+                
+                const texture = new THREE.CanvasTexture(canvas);
+                const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+                const sprite = new THREE.Sprite(spriteMaterial);
+                
+                sprite.position.set(currentPos.x, 1.2, currentPos.z);
+                sprite.scale.set(2, 1, 1);
+                sprite.userData.type = 'label';
+                sprite.userData.personIndex = index;
+                sprite.userData.labelType = 'person';
+                debugNavMeshGroup.add(sprite);
+            });
+        }
+
+        // Clear NavMesh debug visualization
+        function clearNavMeshDebug() {
+            if (debugNavMeshGroup) {
+                scene.remove(debugNavMeshGroup);
+                debugNavMeshGroup = null;
+            }
+        }
+        
+        // Update NavMesh debug visualization (called each frame when visible)
+        function updateNavMeshDebug() {
+            if (!debugNavMeshVisible || !debugNavMeshGroup) {
+                return;
+            }
+            
+            // Clear and recreate the person visualization part
+            // Keep the NavMesh regions but update person positions and paths
+            const personMeshes = debugNavMeshGroup.children.filter(child => 
+                child.userData.type === 'person' || 
+                child.userData.type === 'target' || 
+                child.userData.type === 'path' ||
+                child.userData.type === 'waypoint' ||
+                child.userData.type === 'label' ||
+                child.userData.type === 'path_label' ||
+                child.userData.type === 'no_path_label' ||
+                child.userData.type === 'test_path' ||
+                child.userData.type === 'test_path_label' ||
+                child.userData.type === 'door_connection' ||
+                child.userData.type === 'door_label' ||
+                child.userData.type === 'door_stats_label'
+            );
+            
+            personMeshes.forEach(mesh => {
+                debugNavMeshGroup.remove(mesh);
+            });
+            
+            // Recreate person visualization
+            visualizePersonTargetsAndPaths();
+        }
+
+        // Create debug grid with coordinates
+        function createDebugGrid() {
+            clearDebugGrid();
+            
+            if (!simulation || !simulation.houseData) {
+                window.eventBus.log('No house data available for debug grid');
+                return;
+            }
+
+            const houseData = simulation.houseData;
+            const cellSize = simulation.config.gameSettings.cellSize || 1.0;
+            
+            // Calculate grid bounds based on house data dimensions
+            const minX = Math.floor(houseData.dimensions.minX - 2);
+            const maxX = Math.ceil(houseData.dimensions.maxX + 2);
+            const minZ = Math.floor(houseData.dimensions.minZ - 2);
+            const maxZ = Math.ceil(houseData.dimensions.maxZ + 2);
+            
+            window.eventBus.log(`Creating debug grid from (${minX}, ${minZ}) to (${maxX}, ${maxZ})`);
+
+            // Create grid lines
+            const gridMaterial = new THREE.LineBasicMaterial({ color: 0xff0000, opacity: 0.5, transparent: true });
+            
+            // Vertical lines (X direction)
+            for (let x = minX; x <= maxX; x++) {
+                const geometry = new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(x * cellSize, 0, minZ * cellSize),
+                    new THREE.Vector3(x * cellSize, 0, maxZ * cellSize)
+                ]);
+                const line = new THREE.Line(geometry, gridMaterial);
+                debugGridGroup.add(line);
+            }
+            
+            // Horizontal lines (Z direction)
+            for (let z = minZ; z <= maxZ; z++) {
+                const geometry = new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(minX * cellSize, 0, z * cellSize),
+                    new THREE.Vector3(maxX * cellSize, 0, z * cellSize)
+                ]);
+                const line = new THREE.Line(geometry, gridMaterial);
+                debugGridGroup.add(line);
+            }
+
+            // Create coordinate text labels
+            for (let x = minX; x <= maxX; x++) {
+                for (let z = minZ; z <= maxZ; z++) {
+                    const canvas = document.createElement('canvas');
+                    const context = canvas.getContext('2d');
+                    canvas.width = 128;
+                    canvas.height = 64;
+                    
+                    context.fillStyle = 'rgba(0, 0, 0, 0.8)';
+                    context.fillRect(0, 0, canvas.width, canvas.height);
+                    
+                    context.fillStyle = 'white';
+                    context.font = '12px Arial';
+                    context.textAlign = 'center';
+                    context.fillText(`${x},${z}`, canvas.width / 2, canvas.height / 2);
+                    
+                    const texture = new THREE.CanvasTexture(canvas);
+                    const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+                    const sprite = new THREE.Sprite(spriteMaterial);
+                    
+                    sprite.position.set(x * cellSize, 2, z * cellSize);
+                    sprite.scale.set(2, 1, 1);
+                    
+                    debugTextGroup.add(sprite);
+                }
+            }
+
+            // Highlight furniture positions
+            if (houseData.rooms) {
+                houseData.rooms.forEach(room => {
+                    if (room.furniture) {
+                        room.furniture.forEach(furniture => {
+                            const canvas = document.createElement('canvas');
+                            const context = canvas.getContext('2d');
+                            canvas.width = 128;
+                            canvas.height = 64;
+                            
+                            context.fillStyle = 'rgba(255, 0, 0, 0.9)';
+                            context.fillRect(0, 0, canvas.width, canvas.height);
+                            
+                            context.fillStyle = 'white';
+                            context.font = '10px Arial';
+                            context.textAlign = 'center';
+                            context.fillText(`${furniture.type}`, canvas.width / 2, 30);
+                            context.fillText(`(${furniture.gridX},${furniture.gridZ})`, canvas.width / 2, 45);
+                            
+                            const texture = new THREE.CanvasTexture(canvas);
+                            const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+                            const sprite = new THREE.Sprite(spriteMaterial);
+                            
+                            const worldX = room.worldX + (furniture.gridX - room.gridX) * cellSize;
+                            const worldZ = room.worldZ + (furniture.gridZ - room.gridZ) * cellSize;
+                            
+                            sprite.position.set(worldX, 3, worldZ);
+                            sprite.scale.set(2, 1, 1);
+                            
+                            debugTextGroup.add(sprite);
+                        });
+                    }
+                });
+            }
+        }
+
+        // Clear debug grid
+        function clearDebugGrid() {
+            if (debugGridGroup) {
+                while (debugGridGroup.children.length > 0) {
+                    debugGridGroup.remove(debugGridGroup.children[0]);
+                }
+            }
+            if (debugTextGroup) {
+                while (debugTextGroup.children.length > 0) {
+                    debugTextGroup.remove(debugTextGroup.children[0]);
+                }
+            }
+        }
+
+        // Animation loop with wall culling and integrated simulation
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            controls.update();
+            
+            // Update simulation at fixed intervals (every 1000ms as configured)
+            const currentTime = Date.now();
+            if (currentTime - simulationState.lastTickTime >= simulationState.tickInterval) {
+                simulation.tick();
+                simulationState.lastTickTime = currentTime;
+            }
+            
+            // Update animations with proper delta time
+            if (houseRenderer) {
+                houseRenderer.updateAnimations();
+            }
+            
+            // Enforce minimum camera distance to prevent culling issues
+            if (simulation && simulation.houseData && simulation.config) {
+                const houseCenter = new THREE.Vector3(
+                    simulation.houseData.center.worldX,
+                    0,
+                    simulation.houseData.center.worldZ
+                );
+                const cameraDistance = camera.position.distanceTo(houseCenter);
+                const minDistance = simulation.config.gameSettings.minCameraDistance || 3.0;
+                
+                if (cameraDistance < minDistance) {
+                    // Push camera back to minimum distance
+                    const direction = new THREE.Vector3().subVectors(camera.position, houseCenter).normalize();
+                    camera.position.copy(houseCenter).add(direction.multiplyScalar(minDistance));
+                    controls.update();
+                }
+            }
+            
+            // Update wall culling based on camera movement
+            if (houseRenderer && simulation.houseData) {
+                houseRenderer.updateWallCulling(simulation.houseData.rooms);
+                simulation.updateCullStats();
+            }
+            
+            // Update NavMesh debug visualization
+            updateNavMeshDebug();
+            
+            renderer.render(scene, camera);
+        }
+
+        // Initialize everything
+        async function init() {
+            initThreeJS();
+            window.addEventListener('resize', onWindowResize);
+            window.addEventListener('keydown', handleKeyDown);
+            window.addEventListener('click', handleClickOutside);
+            
+            // Test if UI elements exist
+            window.eventBus.log('DEBUG', '=== UI ELEMENTS TEST ===');
+            const peopleToolbar = document.getElementById('peopleToolbar');
+            const personDetailsPopup = document.getElementById('personDetailsPopup');
+            window.eventBus.log('DEBUG', 'peopleToolbar found:', !!peopleToolbar);
+            window.eventBus.log('DEBUG', 'personDetailsPopup found:', !!personDetailsPopup);
+            if (peopleToolbar) {
+                window.eventBus.log('DEBUG', 'peopleToolbar children:', peopleToolbar.children.length);
+            }
+            window.eventBus.log('DEBUG', '=== END UI ELEMENTS TEST ===');
+            
+            const config = await loadConfig();
+            simulation = new DeterministicSimulation(config);
+            await simulation.init();
+            
+            animate();
+            
+            window.eventBus.log('Grid-Based Deterministic Sims Clone with GLB Models Started');
+            window.eventBus.log(`Grid Size: ${config.gameSettings.gridSize}x${config.gameSettings.gridSize}`);
+            window.eventBus.log(`Cell Size: ${config.gameSettings.cellSize}`);
+            window.eventBus.log(`Seed: ${simulationState.seed}`);
+            window.eventBus.log(`Deployment: ${simulationState.deploymentTime}`);
+            window.eventBus.log('Press Z to toggle debug grid with coordinates');
+        }
+
+        // Start the simulation when page loads
+        init();
+
+        // Global function for debug button
+        window.regenerateSeed = async function() {
+            // Generate new random seed
+            simulationState.seed = Math.floor(Math.random(simulationState.seed) * 1000000);
+            simulationState.rngState = simulationState.seed;
+            
+            window.eventBus.log(`Regenerating with new seed: ${simulationState.seed}`);
+            
+            // Clear existing house
+            if (house) {
+                house.clear();
+            }
+            
+            // Clear existing renderer using dispose method
+            if (houseRenderer) {
+                houseRenderer.dispose();
+            }
+            
+            // Reinitialize with new seed
+            rng = new DeterministicRNG(simulationState.seed);
+            grid = new Grid(simulation.config, rng);
+            house = new House(simulation.config, grid, rng);
+            
+            // Set camera reference and config for culling
+            houseRenderer.setCamera(camera);
+            houseRenderer.setConfig(simulation.config);
+            
+            // Generate new house
+            await simulation.generateHouse();
+            simulation.updateDisplay();
+            simulation.updateHouseDisplay();
+            simulation.updateRenderStats();
+            
+            window.eventBus.log(`House regenerated with seed: ${simulationState.seed}`);
+        };
+        
+        // Test NavMesh pathfinding
+        window.testNavMeshPathfinding = function() {
+            if (!house) {
+                window.eventBus.log('No house available for pathfinding test');
+                return;
+            }
+            
+            const navMesh = house.getNavMeshPlanner();
+            if (!navMesh) {
+                window.eventBus.log('No NavMesh available for pathfinding test');
+                return;
+            }
+            
+            window.eventBus.log('=== NavMesh Pathfinding Test ===');
+            
+            // Get statistics
+            const stats = navMesh.getStatistics();
+            window.eventBus.log('NavMesh Statistics:', stats);
+            
+            // Run multiple test paths
+            for (let i = 0; i < 3; i++) {
+                const testPath = navMesh.testPathfinding();
+                if (testPath) {
+                    window.eventBus.log(`Test ${i + 1} successful: ${testPath.length} waypoints`);
+                } else {
+                    window.eventBus.log(`Test ${i + 1} failed`);
+                }
+            }
+            
+            window.eventBus.log('=== End Pathfinding Test ===');
+        };
+        
+        // Test door map functionality
+        window.testDoorMap = function() {
+            if (!house) {
+                window.eventBus.log('No house available for door map test');
+                return;
+            }
+            
+            window.eventBus.log('=== Door Map Test ===');
+            
+            // Force rebuild navmesh to ensure door map is built
+            window.eventBus.log('Forcing navmesh rebuild to ensure door map is built...');
+            const houseData = house.getHouseData();
+            const navMesh = house.getNavMeshPlanner();
+            window.eventBus.log('NavMesh object:', navMesh);
+            window.eventBus.log('NavMesh.buildFromHouse method:', navMesh ? navMesh.buildFromHouse : 'undefined');
+            
+            if (navMesh && navMesh.buildFromHouse) {
+                window.eventBus.log('Calling buildFromHouse...');
+                try {
+                    navMesh.buildFromHouse(houseData, house);
+                    window.eventBus.log('Navmesh rebuilt with door map');
+                } catch (error) {
+                    window.eventBus.log('Error rebuilding navmesh:', error);
+                }
+            } else {
+                window.eventBus.log('NavMesh or buildFromHouse method not available!');
+            }
+            
+            // Test door map
+            window.eventBus.log('Testing door map after rebuild...');
+            const doorMap = navMesh.getDoorMap();
+            window.eventBus.log('Door Map:', doorMap);
+            window.eventBus.log(`Door map size: ${doorMap.size}`);
+            
+            // Test room connections
+            const roomConnections = navMesh.getRoomConnections();
+            window.eventBus.log('Room Connections:', roomConnections);
+            window.eventBus.log(`Room connections size: ${roomConnections.size}`);
+            
+            // Test door map statistics
+            const doorStats = navMesh.getDoorMapStatistics();
+            window.eventBus.log('Door Map Statistics:', doorStats);
+            
+            // Direct access test
+            window.eventBus.log('Direct access to doorMap property:', navMesh.doorMap);
+            window.eventBus.log('Direct access to roomConnections property:', navMesh.roomConnections);
+            
+            // Test individual door queries
+            if (doorMap.size > 0) {
+                const firstDoor = Array.from(doorMap.entries())[0];
+                const [doorKey, doorData] = firstDoor;
+                const { sourceRoom, destRoom } = doorData;
+                
+                window.eventBus.log(`Testing door ${doorKey}:`);
+                window.eventBus.log(`  - Source room: ${sourceRoom.type} (${sourceRoom.id})`);
+                window.eventBus.log(`  - Dest room: ${destRoom.type} (${destRoom.id})`);
+                window.eventBus.log(`  - Are connected: ${navMesh.areRoomsConnected(sourceRoom.id, destRoom.id)}`);
+                
+                const sourceDoors = navMesh.getDoorsForRoom(sourceRoom.id);
+                window.eventBus.log(`  - Doors for ${sourceRoom.type}: ${sourceDoors.length}`);
+                
+                const connectedRooms = navMesh.getConnectedRooms(sourceRoom.id);
+                window.eventBus.log(`  - Rooms connected to ${sourceRoom.type}: ${Array.from(connectedRooms).join(', ')}`);
+            }
+            
+            window.eventBus.log('=== End Door Map Test ===');
+        };
+        
+        // Inspect house data structure
+        window.inspectHouseData = function() {
+            if (!house) {
+                window.eventBus.log('No house available for inspection');
+                return;
+            }
+            
+            const houseData = house.getHouseData();
+            window.eventBus.log('=== House Data Inspection ===');
+            window.eventBus.log('House Data:', houseData);
+            
+            if (houseData.walls) {
+                window.eventBus.log(`Total walls: ${houseData.walls.length}`);
+                const wallsWithOpenings = houseData.walls.filter(wall => wall.hasOpening);
+                window.eventBus.log(`Walls with openings: ${wallsWithOpenings.length}`);
+                
+                const doors = houseData.walls.filter(wall => wall.hasOpening && wall.openingType === 'door');
+                window.eventBus.log(`Doors: ${doors.length}`);
+                
+                doors.forEach((door, index) => {
+                    window.eventBus.log(`Door ${index + 1}: at (${door.gridX}, ${door.gridZ}) ${door.orientation}, type=${door.openingType}`);
+                });
+            }
+            
+            if (houseData.rooms) {
+                window.eventBus.log(`Total rooms: ${houseData.rooms.length}`);
+                houseData.rooms.forEach((room, index) => {
+                    window.eventBus.log(`Room ${index + 1}: ${room.type} (${room.id}) at (${room.worldX}, ${room.worldZ}) size ${room.worldWidth}x${room.worldHeight}`);
+                });
+            }
+            
+            window.eventBus.log('=== End House Data Inspection ===');
+        };
+        
+        // Close person details popup
+        window.closePersonDetails = function() {
+            if (personManager && personManager.closePersonDetails) {
+                personManager.closePersonDetails();
+            }
+        };
+        
+                // Test enhanced people system
+        window.testEnhancedPeople = function() {
+            window.eventBus.log('=== Enhanced People System Test ===');
+            
+            // Check UI elements
+            const peopleToolbar = document.getElementById('peopleToolbar');
+            const personDetailsPopup = document.getElementById('personDetailsPopup');
+            window.eventBus.log('UI Elements:');
+            window.eventBus.log('  - peopleToolbar:', peopleToolbar);
+            window.eventBus.log('  - personDetailsPopup:', personDetailsPopup);
+            
+            if (peopleToolbar) {
+                window.eventBus.log('  - peopleToolbar children:', peopleToolbar.children.length);
+                window.eventBus.log('  - peopleToolbar HTML:', peopleToolbar.innerHTML.substring(0, 200) + '...');
+            }
+            
+            // Try to create UI elements if they don't exist
+            if (!peopleToolbar) {
+                window.eventBus.log('WARN', 'People toolbar not found, creating it...');
+                const newToolbar = document.createElement('div');
+                newToolbar.id = 'peopleToolbar';
+                newToolbar.style.cssText = 'position: fixed; bottom: 0; left: 0; right: 0; height: 80px; background: rgba(0, 0, 0, 0.95); border-top: 2px solid #00ff00; z-index: 1000; display: flex; align-items: center; padding: 10px; gap: 15px; overflow-x: auto;';
+                document.body.appendChild(newToolbar);
+                window.eventBus.log('INFO', 'Created people toolbar');
+            }
+            
+            if (!personDetailsPopup) {
+                window.eventBus.log('WARN', 'Person details popup not found, creating it...');
+                const newPopup = document.createElement('div');
+                newPopup.id = 'personDetailsPopup';
+                newPopup.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 600px; background: rgba(0, 0, 0, 0.95); border: 3px solid #00ff00; border-radius: 10px; z-index: 2000; display: none; color: #00ff00; padding: 20px;';
+                newPopup.innerHTML = '<h2>Person Details</h2><p>This is a test popup</p>';
+                document.body.appendChild(newPopup);
+                window.eventBus.log('INFO', 'Created person details popup');
+            }
+            
+
+            
+            const people = personManager.getPeople();
+            window.eventBus.log(`Total people: ${people.length}`);
+            
+            people.forEach(person => {
+                window.eventBus.log(`Person ${person.id} (${person.displayName}):`);
+                window.eventBus.log(`  - Type: ${person.type}`);
+                window.eventBus.log(`  - Traits: ${person.traits.join(', ')}`);
+                window.eventBus.log(`  - Task queue: ${person.taskQueue.length} tasks`);
+                window.eventBus.log(`  - Current task: ${person.currentTask ? person.currentTask.description : 'None'}`);
+                
+                // Show needs
+                Object.entries(person.needs).forEach(([need, value]) => {
+                    const status = person.getNeedStatus(need);
+                    window.eventBus.log(`  - ${need}: ${value} (${status})`);
+                });
+                
+                // Show task queue
+                if (person.taskQueue.length > 0) {
+                    window.eventBus.log(`  - Task queue:`);
+                    person.taskQueue.forEach((task, index) => {
+                        window.eventBus.log(`    ${index + 1}. ${task.description} (Priority: ${task.priority}, Progress: ${task.progress}/${task.duration})`);
+                    });
+                }
+            });
+            
+            // Test popup functionality
+            if (people.length > 0) {
+                window.eventBus.log('Testing popup functionality...');
+                personManager.selectPerson(people[0].id);
+            }
+            
+            window.eventBus.log('=== End Enhanced People Test ===');
+        };
+        
+        // Test popup directly
+        window.testPopupDirectly = function() {
+            window.eventBus.log('=== Direct Popup Test ===');
+            
+            // First, try to show the existing popup
+            const popup = document.getElementById('personDetailsPopup');
+            window.eventBus.log('Existing popup element:', popup);
+            
+            if (popup) {
+                window.eventBus.log('Existing popup found, testing display...');
+                window.eventBus.log('Current display:', popup.style.display);
+                window.eventBus.log('Current visibility:', popup.style.visibility);
+                window.eventBus.log('Current z-index:', popup.style.zIndex);
+                
+                // Force show it with !important
+                popup.style.setProperty('display', 'block', 'important');
+                popup.style.setProperty('visibility', 'visible', 'important');
+                popup.style.setProperty('opacity', '1', 'important');
+                popup.style.setProperty('z-index', '9999', 'important');
+                popup.style.setProperty('background', 'rgba(0, 0, 0, 0.98)', 'important');
+                popup.style.setProperty('border', '3px solid #ff0000', 'important');
+                popup.style.setProperty('pointer-events', 'auto', 'important');
+                popup.innerHTML = '<h2 style="color: #ff0000;">TEST POPUP</h2><p style="color: #ff0000;">This is a direct test popup</p>';
+                
+                window.eventBus.log('Popup should now be visible with red border');
+                window.eventBus.log('Computed display:', window.getComputedStyle(popup).display);
+                window.eventBus.log('Computed z-index:', window.getComputedStyle(popup).zIndex);
+                window.eventBus.log('Computed visibility:', window.getComputedStyle(popup).visibility);
+            }
+            
+            // Now create a completely new popup to test
+            window.eventBus.log('Creating a completely new test popup...');
+            const newPopup = document.createElement('div');
+            newPopup.id = 'testPopup';
+            newPopup.style.cssText = `
+                position: fixed !important;
+                top: 50px !important;
+                right: 50px !important;
+                width: 300px !important;
+                height: 200px !important;
+                background: rgba(255, 0, 0, 0.9) !important;
+                border: 5px solid #ffff00 !important;
+                border-radius: 10px !important;
+                z-index: 10000 !important;
+                display: block !important;
+                visibility: visible !important;
+                opacity: 1 !important;
+                pointer-events: auto !important;
+                color: white !important;
+                font-family: Arial, sans-serif !important;
+                font-size: 16px !important;
+                padding: 20px !important;
+                box-shadow: 0 0 20px rgba(255, 255, 0, 0.8) !important;
+            `;
+            newPopup.innerHTML = '<h2>NEW TEST POPUP</h2><p>This is a completely new popup element</p><p>If you can see this, the issue is with the original popup</p>';
+            
+            document.body.appendChild(newPopup);
+            window.eventBus.log('New popup created and added to DOM');
+            window.eventBus.log('New popup element:', newPopup);
+            window.eventBus.log('New popup computed display:', window.getComputedStyle(newPopup).display);
+            window.eventBus.log('New popup computed visibility:', window.getComputedStyle(newPopup).visibility);
+            
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                if (newPopup.parentNode) {
+                    newPopup.parentNode.removeChild(newPopup);
+                    window.eventBus.log('New popup removed');
+                }
+            }, 5000);
+            
+            window.eventBus.log('=== End Direct Popup Test ===');
+        };
+        
+        // Test person details popup specifically
+        window.testPersonDetailsPopup = function() {
+            window.eventBus.log('=== Person Details Popup Test ===');
+            
+            // Remove the old popup if it exists
+            const oldPopup = document.getElementById('personDetailsPopup');
+            if (oldPopup && oldPopup.parentNode) {
+                oldPopup.parentNode.removeChild(oldPopup);
+                window.eventBus.log('Removed old popup');
+            }
+            
+            // Create a new person details popup dynamically
+            const newPopup = document.createElement('div');
+            newPopup.id = 'personDetailsPopup';
+            newPopup.style.cssText = `
+                position: fixed !important;
+                top: 10px !important;
+                right: 10px !important;
+                width: 400px !important;
+                max-height: 80vh !important;
+                background: rgba(0, 0, 0, 0.9) !important;
+                border: 2px solid #00ff00 !important;
+                border-radius: 5px !important;
+                z-index: 2000 !important;
+                display: block !important;
+                font-family: 'Courier New', monospace !important;
+                color: #00ff00 !important;
+                overflow: hidden !important;
+                font-size: 11px !important;
+            `;
+            
+            newPopup.innerHTML = `
+                <button onclick="closePersonDetails()" style="position: absolute; top: 5px; right: 5px; background: #ff4400; color: white; border: none; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; font-size: 12px; font-weight: bold;">×</button>
+                <div style="background: rgba(0, 255, 0, 0.1); padding: 8px; border-bottom: 1px solid #00ff00; display: flex; align-items: center; gap: 8px;">
+                    <div style="width: 40px; height: 40px; border: 1px solid #00ff00; border-radius: 4px; background: rgba(0, 0, 0, 0.8); display: flex; align-items: center; justify-content: center; color: #00ff00;">AV</div>
+                    <div style="flex: 1;">
+                        <div id="popupPersonName" style="font-size: 12px; font-weight: bold; color: #00ffff; margin-bottom: 2px;">Test Person</div>
+                        <div id="popupPersonTraits" style="font-size: 10px; color: #ffff00; margin-bottom: 2px;">Traits: Friendly, Smart</div>
+                        <div id="popupPersonLocation" style="font-size: 10px; color: #00aa00;">Location: Living Room</div>
+                    </div>
+                </div>
+                <div style="padding: 8px; max-height: 60vh; overflow-y: auto;">
+                    <div style="margin-bottom: 25px;">
+                        <div style="font-size: 11px; font-weight: bold; color: #00ffff; margin-bottom: 8px; border-bottom: 1px solid #00ff00; padding-bottom: 3px;">Needs</div>
+                        <div id="needsGrid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px;">
+                            <div style="background: rgba(0, 0, 0, 0.5); border: 1px solid #00ff00; border-radius: 3px; padding: 4px;">
+                                <div style="font-size: 9px; color: #00aa00; margin-bottom: 2px;">Hunger</div>
+                                <div style="width: 100%; height: 12px; background: rgba(0, 0, 0, 0.8); border: 1px solid #00ff00; border-radius: 2px; overflow: hidden; position: relative;">
+                                    <div style="height: 100%; background: linear-gradient(90deg, #00ff00, #00aa00); width: 75%;"></div>
+                                    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 8px; color: white; font-weight: bold;">75</div>
+                                </div>
+                            </div>
+                            <div style="background: rgba(0, 0, 0, 0.5); border: 1px solid #00ff00; border-radius: 3px; padding: 4px;">
+                                <div style="font-size: 9px; color: #00aa00; margin-bottom: 2px;">Energy</div>
+                                <div style="width: 100%; height: 12px; background: rgba(0, 0, 0, 0.8); border: 1px solid #00ff00; border-radius: 2px; overflow: hidden; position: relative;">
+                                    <div style="height: 100%; background: linear-gradient(90deg, #ffff00, #00ff00); width: 60%;"></div>
+                                    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 8px; color: white; font-weight: bold;">60</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="margin-bottom: 25px;">
+                        <div style="font-size: 11px; font-weight: bold; color: #00ffff; margin-bottom: 8px; border-bottom: 1px solid #00ff00; padding-bottom: 3px;">Task Queue</div>
+                        <div id="taskQueue" style="max-height: 120px; overflow-y: auto; border: 1px solid #00ff00; border-radius: 3px; background: rgba(0, 0, 0, 0.5);">
+                            <div style="padding: 4px 6px; border-bottom: 1px solid rgba(0, 255, 0, 0.3); display: flex; align-items: center; gap: 6px;">
+                                <div style="width: 16px; height: 16px; background: #00ff00; border-radius: 2px; display: flex; align-items: center; justify-content: center; font-size: 8px; color: black;">🍽</div>
+                                <div style="flex: 1;">
+                                    <div style="font-size: 9px; color: #00ff00; margin-bottom: 1px;">Eat Food</div>
+                                    <div style="font-size: 8px; color: #00aa00;">Priority: High | Duration: 30s</div>
+                                </div>
+                                <div style="width: 40px; height: 6px; background: rgba(0, 0, 0, 0.8); border: 1px solid #00ff00; border-radius: 1px; overflow: hidden;">
+                                    <div style="height: 100%; background: #00ff00; width: 45%;"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(newPopup);
+            window.eventBus.log('New person details popup created and added to DOM');
+            window.eventBus.log('New popup element:', newPopup);
+            window.eventBus.log('New popup computed display:', window.getComputedStyle(newPopup).display);
+            window.eventBus.log('New popup computed visibility:', window.getComputedStyle(newPopup).visibility);
+            
+            window.eventBus.log('=== End Person Details Popup Test ===');
+        };
+        
+        // Test people toolbar specifically
+        window.testPeopleToolbar = function() {
+            window.eventBus.log('=== People Toolbar Test ===');
+            
+            if (!personManager) {
+                window.eventBus.log('ERROR', 'PersonManager not available');
+                return;
+            }
+            
+            const people = personManager.getPeople();
+            window.eventBus.log(`Total people: ${people.length}`);
+            
+            people.forEach(person => {
+                window.eventBus.log(`Person ${person.id}: ${person.displayName || person.name || 'Unknown'}`);
+            });
+            
+            // Force update the toolbar
+            if (personManager.updatePeopleToolbar) {
+                window.eventBus.log('Forcing toolbar update...');
+                personManager.updatePeopleToolbar();
+                
+                // Check if avatars were created
+                const peopleToolbar = document.getElementById('peopleToolbar');
+                if (peopleToolbar) {
+                    window.eventBus.log(`Toolbar children: ${peopleToolbar.children.length}`);
+                    window.eventBus.log('Toolbar HTML:', peopleToolbar.innerHTML.substring(0, 200) + '...');
+                }
+            }
+            
+            window.eventBus.log('=== End People Toolbar Test ===');
+        };
+        
+        // Test room-level pathfinding
+        window.testRoomPathfinding = function() {
+            if (!house) {
+                window.eventBus.log('No house available for room pathfinding test');
+                return;
+            }
+            
+            const navMesh = house.getNavMeshPlanner();
+            if (!navMesh) {
+                window.eventBus.log('No NavMesh available for room pathfinding test');
+                return;
+            }
+            
+            window.eventBus.log('=== Room Pathfinding Test ===');
+            
+            // Get door map statistics
+            const doorStats = navMesh.getDoorMapStatistics();
+            window.eventBus.log('Door Map Statistics:', doorStats);
+            
+            // Get room connections
+            const roomConnections = navMesh.getRoomConnections();
+            window.eventBus.log('Room Connections:', roomConnections);
+            
+            // Test room pathfinding between random rooms
+            const roomIds = Array.from(roomConnections.keys());
+            if (roomIds.length >= 2) {
+                for (let i = 0; i < 3; i++) {
+                    const startRoomId = roomIds[Math.floor(Math.random(config.randomSeed) * roomIds.length)];
+                    const endRoomId = roomIds[Math.floor(Math.random(config.randomSeed) * roomIds.length)];
+                    
+                    if (startRoomId !== endRoomId) {
+                        const roomPath = navMesh.getRoomPath(startRoomId, endRoomId);
+                        
+                        if (roomPath) {
+                            window.eventBus.log(`Room path ${i + 1}: ${roomPath.join(' → ')} (${roomPath.length} rooms)`);
+                        } else {
+                            window.eventBus.log(`Room path ${i + 1}: No path found from room ${startRoomId} to ${endRoomId}`);
+                        }
+                    }
+                }
+            }
+            
+            // Test door queries
+            const doorMap = navMesh.getDoorMap();
+            if (doorMap.size > 0) {
+                const firstDoor = Array.from(doorMap.entries())[0];
+                const [doorKey, doorData] = firstDoor;
+                const { sourceRoom, destRoom } = doorData;
+                
+                window.eventBus.log(`Testing door queries for door ${doorKey}:`);
+                window.eventBus.log(`  - Connects: ${sourceRoom.type} (${sourceRoom.id}) ↔ ${destRoom.type} (${destRoom.id})`);
+                window.eventBus.log(`  - Are rooms connected: ${navMesh.areRoomsConnected(sourceRoom.id, destRoom.id)}`);
+                window.eventBus.log(`  - Door between rooms: ${navMesh.getDoorBetweenRooms(sourceRoom.id, destRoom.id) ? 'Found' : 'Not found'}`);
+                
+                const sourceDoors = navMesh.getDoorsForRoom(sourceRoom.id);
+                window.eventBus.log(`  - Doors for ${sourceRoom.type}: ${sourceDoors.length} doors`);
+                
+                const connectedRooms = navMesh.getConnectedRooms(sourceRoom.id);
+                window.eventBus.log(`  - Rooms connected to ${sourceRoom.type}: ${Array.from(connectedRooms).join(', ')}`);
+            }
+            
+            window.eventBus.log('=== End Room Pathfinding Test ===');
+        };
+
+        // Test movement system
+        window.testMovementSystem = function() {
+            window.eventBus.log('=== Movement System Test ===');
+            
+            if (!personManager) {
+                window.eventBus.log('ERROR', 'PersonManager not available');
+                return;
+            }
+            
+            const people = personManager.getPeople();
+            window.eventBus.log(`Testing movement for ${people.length} people`);
+            
+            people.forEach((person, index) => {
+                window.eventBus.log(`Person ${index + 1} (${person.id}):`, {
+                    position: [person.worldX.toFixed(2), person.worldZ.toFixed(2)],
+                    isMoving: person.isMoving,
+                    animationState: person.animationState,
+                    pathLength: person.currentPath ? person.currentPath.length : 0,
+                    movementStartTime: person.movementStartTime,
+                    speed: person.speed,
+                    direction: person.direction.toFixed(3)
+                });
+                
+                // Test movement by setting a random target
+                if (!person.isMoving) {
+                    const targetX = person.worldX + (Math.random() - 0.5) * 10;
+                    const targetZ = person.worldZ + (Math.random() - 0.5) * 10;
+                    
+                    window.eventBus.log(`Setting random target for person ${index + 1}: (${targetX.toFixed(2)}, ${targetZ.toFixed(2)})`);
+                    
+                    person.targetX = targetX;
+                    person.targetZ = targetZ;
+                    person.isMoving = true;
+                    person.movementStartTime = 1;
+                    
+                    // Calculate path
+                    if (person.calculatePathToTarget) {
+                        person.calculatePathToTarget(targetX, targetZ);
+                    }
+                }
+            });
+            
+            window.eventBus.log('=== End Movement Test ===');
+        };
+
+        // Test simulation logic separation
+        window.testSimulationLogicSeparation = function() {
+            window.eventBus.log('=== Simulation Logic Separation Test ===');
+            
+            if (!personManager) {
+                window.eventBus.log('ERROR', 'PersonManager not available');
+                return;
+            }
+            
+            const people = personManager.getPeople();
+            window.eventBus.log(`Testing simulation logic separation for ${people.length} people`);
+            
+            // Store current positions
+            const originalPositions = people.map(person => ({
+                id: person.id,
+                worldX: person.worldX,
+                worldZ: person.worldZ,
+                isMoving: person.isMoving
+            }));
+            
+            // Call simulation logic update
+            personManager.updateSimulationLogic(0, house, simulation.houseData.rooms, 0);
+            
+            // Check if positions changed (they shouldn't)
+            people.forEach((person, index) => {
+                const original = originalPositions[index];
+                const positionChanged = Math.abs(person.worldX - original.worldX) > 0.001 || 
+                                      Math.abs(person.worldZ - original.worldZ) > 0.001;
+                
+                window.eventBus.log(`Person ${person.id}:`, {
+                    originalPosition: [original.worldX.toFixed(2), original.worldZ.toFixed(2)],
+                    currentPosition: [person.worldX.toFixed(2), person.worldZ.toFixed(2)],
+                    positionChanged: positionChanged,
+                    isMoving: person.isMoving,
+                    originalIsMoving: original.isMoving
+                });
+                
+                if (positionChanged) {
+                    window.eventBus.log('WARN', `Person ${person.id} position changed during simulation logic update!`);
+                }
+            });
+            
+            window.eventBus.log('=== End Simulation Logic Separation Test ===');
+        };
+
+        // Special debug logging for people spawning issues
+        window.peopleDebug = function(message, data = null) {
+            const timestamp = new Date().toLocaleTimeString();
+            const logMessage = `🎯 PEOPLE DEBUG [${timestamp}] ${message}`;
+            console.log(logMessage, data || '');
+            window.eventBus.log('PEOPLE_DEBUG', message, data);
+        };
+
+        // Test people rendering
+        window.testPeopleRendering = function() {
+            window.peopleDebug('=== People Rendering Test ===');
+            
+            if (!personManager) {
+                window.peopleDebug('ERROR: PersonManager not available');
+                return;
+            }
+            
+            if (!houseRenderer) {
+                window.peopleDebug('ERROR: HouseRenderer not available');
+                return;
+            }
+            
+            const people = personManager.getPeople();
+            window.peopleDebug(`Testing rendering for ${people.length} people`);
+            
+            if (people.length === 0) {
+                window.peopleDebug('WARN: No people to render');
+                return;
+            }
+            
+            // Get people data and objects
+            const peopleData = personManager.getEnhancedPeopleData ? personManager.getEnhancedPeopleData() : personManager.getPeopleData();
+            const peopleObjects = personManager.getPeople();
+            
+            window.peopleDebug('People data:', peopleData);
+            window.peopleDebug('People objects:', peopleObjects);
+            
+            // Try to render people
+            houseRenderer.renderPeople(peopleData, peopleObjects);
+            
+            window.peopleDebug('=== End People Rendering Test ===');
+        };
+
+        // Force people rendering
+        window.forcePeopleRendering = function() {
+            window.peopleDebug('=== Force People Rendering ===');
+            
+            if (!personManager || !houseRenderer) {
+                window.peopleDebug('ERROR: PersonManager or HouseRenderer not available');
+                return;
+            }
+            
+            // Clear existing people meshes
+            houseRenderer.personMeshes.clear();
+            
+            // Get current people
+            const people = personManager.getPeople();
+            const peopleData = personManager.getEnhancedPeopleData ? personManager.getEnhancedPeopleData() : personManager.getPeopleData();
+            
+            window.peopleDebug(`Force rendering ${people.length} people`);
+            
+            // Render each person individually
+            people.forEach((person, index) => {
+                const personData = peopleData[index];
+                if (personData) {
+                    window.peopleDebug(`Force rendering person ${person.id} at (${person.worldX.toFixed(2)}, ${person.worldZ.toFixed(2)})`);
+                    houseRenderer.renderPerson(personData, person);
+                }
+            });
+            
+            window.peopleDebug('=== End Force People Rendering ===');
+        };
+    </script>
+</body>
+</html> 

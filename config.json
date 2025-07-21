@@ -1,0 +1,22 @@
+{
+  "deploymentTime": "2024-12-23T00:00:00.000Z",
+  "tickInterval": 1000,
+  "randomSeed": 393167,
+  "gameSettings": {
+    "gridSize": 32,
+    "cellSize": 1.0,
+    "minRoomSize": 3,
+    "maxRoomSize": 8,
+    "maxRooms": 10,
+    "wallHeight": 2.5,
+    "wallThickness": 0.1,
+    "floorHeight": 0.02,
+    "foregroundDirection": "south",
+    "showGrid": false,
+    "roofZoomThreshold": 20,
+    "noCullingZone": 8,
+    "minCameraDistance": 6.0,
+    "roofPitch": 0.5,
+    "roofOverhang": 0.3
+  }
+} 
